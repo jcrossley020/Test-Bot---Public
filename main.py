@@ -4,6 +4,7 @@ import discord
 import os
 import random
 import pandas as pd
+from registered_nations import registered_dict
 from discord.ext import commands
 from discord.ext import tasks
 from discord.utils import get
@@ -22,7 +23,7 @@ async def on_ready():
     activity = discord.Game(name="Quit looking at me", type=3)
     await bot.change_presence(status=discord.Status.online, activity=activity)
     print('We have logged in as {0.user}'.format(bot))
-    #refresh_cities.start()
+    #refresh_cities.start()``
     #refresh_nations.start()
 
 
@@ -109,8 +110,8 @@ async def refresh_enemy_nations(ctx, alliance_id):
     r = requests.post(f"https://api.politicsandwar.com/graphql?api_key={api_key}", json={"query": query})
     data = r.json()["data"]["alliances"]["data"][0]["nations"]
     with open('database/enemy_nations.json', 'w') as enemy_nations_file:
-        print(data)
         json.dump(data, enemy_nations_file)
+        print("Data Refreshed")
     await ctx.send("Data Refreshed")
 
 
@@ -123,6 +124,30 @@ async def convert_csv(ctx):
     print("File converted")
     await ctx.send("File converted")
 
+
+@bot.command(name='revenue')
+async def revenue(ctx, nation_id):
+    query = f"{{nations(id:{nation_id}) {{data {{gross_national_income}}}}}}"
+    r = requests.post(f"https://api.politicsandwar.com/graphql?api_key={api_key}", json={"query": query})
+    data = r.json()["data"]["nations"]["data"][0]["gross_national_income"]
+    net_revenue = int(data) / 365
+    await ctx.send(net_revenue)
+
+
+@bot.command(name='register')
+async def register(ctx, nation_id):
+    author = (ctx.message.author.id)
+    data = registered_dict
+    data[author] = nation_id
+    json_object = json.dumps(data, indent = 4)
+    with open('registered_nations.py', 'w') as outputfile:
+        outputfile.write("registered_dict = " + json_object)
+    await ctx.send("Nation Registered")
+
+@register.error
+async def register_error(ctx,error):
+    if isinstance(error):
+        await ctx.send("Something went wrong")
 
 
 bot.run(token)
