@@ -4,10 +4,14 @@ import discord
 import os
 import random
 import pandas as pd
+import datetime
 from registered_nations import registered_dict
 from discord.ext import commands
 from discord.ext import tasks
 from discord.utils import get
+from functions.get_tax_records_v2 import get_tax_records
+from functions.tax_history import tax_history
+from functions.tax_history import alliance_tax_history
 
 with open("config.json") as config:
     data = json.load(config)
@@ -16,45 +20,75 @@ with open("config.json") as config:
     alliance_id = data["important"]["alliance_id"]
     v1_base_url = data["important"]["v1_base_url"]
 
-bot = commands.Bot(command_prefix='!')
+
+bot = commands.Bot(command_prefix='*')
 
 @bot.event
 async def on_ready():
     activity = discord.Game(name="Quit looking at me", type=3)
     await bot.change_presence(status=discord.Status.online, activity=activity)
     print('We have logged in as {0.user}'.format(bot))
-    #refresh_cities.start()``
+    #get_trade_prices.start()
+    #refresh_cities.start()
     #refresh_nations.start()
+    #refresh_tax_records.start()
 
 
-@bot.command(name='hello')
-async def greeting(ctx):
-    greetings_list = ["Soon we shall rule the world!","Our plan is perfect, timing not so much","We are inevitable","It is only a matter of time now","Who says secret societies are bad?"]
-    await ctx.send(random.choice(greetings_list))
 
 #cities API v1
 @tasks.loop(hours=1.0)
 async def refresh_cities():
     with open("database/cities.json", "w") as city_file:
-        print("Refreshing cities data")
+        print("Refreshing Cities Data")
         all_cities = requests.get(f"{v1_base_url}all-cities/key={api_key}")
         json_data = all_cities.json()
         data = json_data["all_cities"]
         json.dump(data, city_file)
         city_file.close
-    print("City data refreshed")
+    print("City Data Refreshed")
 
 #nations API v1
 @tasks.loop(hours=1.0)
 async def refresh_nations():
     with open("database/nations.json", "w") as nations_file:
-        print("Refreshing nations data")
+        print("Refreshing Nations Data")
         all_nations = requests.get(f"{v1_base_url}nations/?key={api_key}")
         json_data = all_nations.json()
         data = json_data["nations"]
         json.dump(data, nations_file)
         nations_file.close
-    print("Nations data refreshed")
+    print("Nations Data Refreshed")
+
+
+@tasks.loop(hours=1.0)
+async def get_trade_prices():
+    print("Grabbing Trade Prices")
+    current_time = datetime.datetime.now()
+    print(current_time)
+    query = f"{{tradeprices(first: 1){{data {{coal,oil,uranium,iron,bauxite,lead,gasoline,munitions,steel,aluminum,food}}}}}}"
+    r = requests.post(f"https://api.politicsandwar.com/graphql?api_key={api_key}", json={"query": query})
+    data = r.json()["data"]["tradeprices"]["data"][0]
+    with open("database/trade_price_history.json", "w") as trade_price_history_file:
+        json.dump(data, trade_price_history_file)
+        print("Task Finished")
+
+
+@tasks.loop(hours=2.0)
+async def refresh_tax_records():
+    print("Getting Tax Records")
+    get_tax_records()
+    print("Tax Records Recieved")
+
+
+@bot.command(name="tax_history")
+async def get_tax_history(ctx, nation_id):
+    await tax_history(ctx, nation_id)
+
+
+@bot.command(name="alliance_tax_history")
+async def get_alliance_tax_history(ctx, alliance_id):
+    await alliance_tax_history(ctx, alliance_id)
+
 
 #who command for alliances and nations
 #arg1 should be either "alliance" or "nation"
@@ -125,6 +159,7 @@ async def convert_csv(ctx):
     await ctx.send("File converted")
 
 
+#does not show all net revenue, only gross nation income
 @bot.command(name='revenue')
 async def revenue(ctx, nation_id):
     query = f"{{nations(id:{nation_id}) {{data {{gross_national_income}}}}}}"
